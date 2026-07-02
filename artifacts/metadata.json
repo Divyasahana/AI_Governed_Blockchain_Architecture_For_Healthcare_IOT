@@ -1,0 +1,47 @@
+{
+  "labels": [
+    "normal_vitals",
+    "critical_vitals",
+    "device_error"
+  ],
+  "class_labels": [
+    "normal_vitals",
+    "critical_vitals",
+    "device_error"
+  ],
+  "feature_columns": [
+    "temperature",
+    "heart_rate",
+    "spo2",
+    "respiratory_rate",
+    "temperature_delta",
+    "heart_rate_delta",
+    "spo2_delta",
+    "respiratory_rate_delta",
+    "temperature_mean_12",
+    "heart_rate_mean_12",
+    "spo2_mean_12",
+    "respiratory_rate_mean_12",
+    "temperature_min_12",
+    "heart_rate_min_12",
+    "spo2_min_12",
+    "respiratory_rate_min_12",
+    "temperature_max_12",
+    "heart_rate_max_12",
+    "spo2_max_12",
+    "respiratory_rate_max_12"
+  ],
+  "sequence_columns": [
+    "temperature",
+    "heart_rate",
+    "spo2",
+    "respiratory_rate",
+    "temperature_delta",
+    "heart_rate_delta",
+    "spo2_delta",
+    "respiratory_rate_delta"
+  ],
+  "sequence_length": 12,
+  "lstm_torchscript": true,
+  "lstm_validation_accuracy": 0.7138888835906982
+}

@@ -1,0 +1,24 @@
+{
+  "training_inputs": [
+    "original_vitals",
+    "xgboost_probabilities",
+    "lstm_probabilities",
+    "isolation_forest_anomaly_score",
+    "model_confidence_entropy_features",
+    "sequence_available_flag"
+  ],
+  "original_vitals": [
+    "temperature",
+    "heart_rate",
+    "spo2",
+    "respiratory_rate"
+  ],
+  "probability_labels": [
+    "normal_vitals",
+    "critical_vitals",
+    "device_error"
+  ],
+  "rows": 15900,
+  "rows_with_real_lstm_sequence": 1800,
+  "rows_without_lstm_sequence_use_xgboost_fallback": 14100
+}

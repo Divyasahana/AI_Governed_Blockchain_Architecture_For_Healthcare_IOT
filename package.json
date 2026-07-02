@@ -1,0 +1,20 @@
+{
+  "name": "iot-health-monitor",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Secure IoT medical monitoring system with AI fusion, InfluxDB, and Ethereum storage.",
+  "scripts": {
+    "hardhat:node": "hardhat node",
+    "contract:deploy": "hardhat run scripts/deploy.js --network localhost",
+    "contract:deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "contract:store": "hardhat run scripts/store_record.js --network localhost",
+    "contract:store:sepolia": "hardhat run scripts/store_record.js --network sepolia",
+    "contract:read": "hardhat run scripts/read_records.js --network localhost",
+    "contract:read:sepolia": "hardhat run scripts/read_records.js --network sepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.10"
+  }
+}
