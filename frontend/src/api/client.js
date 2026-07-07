@@ -17,6 +17,7 @@ export const fetchDbStatus = () => apiFetch('/db-status');
 export const fetchBlockchainRecords = (decrypt = false) => apiFetch(`/blockchain-records${decrypt ? '?decrypt=1' : ''}`).then((r) => r.data);
 export const storeLatestOnChain = () => apiFetch('/blockchain/store', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
 export const storeRecordOnChain = (record) => apiFetch('/blockchain/store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) });
+export const backfillBlockchainRecords = (limit = 100) => apiFetch(`/blockchain/backfill?limit=${limit}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
 export const fetchModelStatus = () => apiFetch('/models/status');
 export const startSimulator = (mode) => apiFetch('/simulator/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, interval: 2 }) });
 export const stopSimulator = () => apiFetch('/simulator/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' } });

@@ -76,6 +76,11 @@ def model_not_ready(exc):
     return jsonify({"error": str(exc), "models": models.status}), 503
 
 
+@app.errorhandler(ValueError)
+def bad_prediction_input(exc):
+    return jsonify({"error": str(exc)}), 400
+
+
 @app.post("/api/vitals")
 def post_vitals():
     prediction = models.predict(request.get_json(force=True) or {})
@@ -159,6 +164,49 @@ def store_blockchain():
     record["encryption_algorithm"] = stored["encryption_algorithm"]
     record["encrypted_vitals_bytes"] = stored["encrypted_vitals_bytes"]
     return jsonify(stored), 201
+
+
+@app.post("/api/blockchain/backfill")
+def backfill_blockchain():
+    limit = int(request.args.get("limit", 100))
+    if not db.connected:
+        return jsonify({"error": "InfluxDB is not connected. Existing records cannot be backfilled.", "influxdb": db.status()}), 503
+
+    existing_timestamps = {to_unix_timestamp(item.get("timestamp", "")) for item in chain.list_records()}
+    candidates = db.list_records(limit, require_influx=True)
+    stored_items = []
+    skipped = 0
+    failed = []
+
+    for record in reversed(candidates):
+        record_timestamp = to_unix_timestamp(record.get("input", {}).get("timestamp", ""))
+        if record_timestamp in existing_timestamps:
+            skipped += 1
+            continue
+        prepared = chain.prepare_record(record)
+        record["encrypted_vitals"] = prepared["encrypted_vitals"]
+        db.write_record(record)
+        if db.error:
+            failed.append({"timestamp": record.get("input", {}).get("timestamp", ""), "error": db.error})
+            continue
+        stored = chain.commit_prepared(prepared)
+        if stored.get("stored_on_chain"):
+            existing_timestamps.add(record_timestamp)
+            stored_items.append(stored)
+        else:
+            failed.append({
+                "timestamp": record.get("input", {}).get("timestamp", ""),
+                "transaction_hash": stored.get("transaction_hash"),
+            })
+
+    return jsonify({
+        "requested_limit": limit,
+        "stored_count": len(stored_items),
+        "skipped_existing_count": skipped,
+        "failed_count": len(failed),
+        "failed": failed,
+        "stored": stored_items,
+    })
 
 
 @app.get("/api/models/status")

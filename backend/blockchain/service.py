@@ -33,6 +33,39 @@ CONTRACT_ABI = [{
     "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function",
+}, {
+    "inputs": [{"internalType": "uint256", "name": "id", "type": "uint256"}],
+    "name": "getRecord",
+    "outputs": [{
+        "components": [
+            {"internalType": "string", "name": "patientId", "type": "string"},
+            {"internalType": "bytes32", "name": "dataHash", "type": "bytes32"},
+            {"internalType": "string", "name": "storageId", "type": "string"},
+            {"internalType": "address", "name": "doctorWallet", "type": "address"},
+            {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+            {"internalType": "string", "name": "finalLabel", "type": "string"},
+            {"internalType": "uint256", "name": "trustScoreBps", "type": "uint256"},
+        ],
+        "internalType": "struct MedicalRecordStore.MedicalRecord",
+        "name": "",
+        "type": "tuple",
+    }],
+    "stateMutability": "view",
+    "type": "function",
+}, {
+    "anonymous": False,
+    "inputs": [
+        {"indexed": True, "internalType": "uint256", "name": "id", "type": "uint256"},
+        {"indexed": False, "internalType": "string", "name": "patientId", "type": "string"},
+        {"indexed": True, "internalType": "bytes32", "name": "dataHash", "type": "bytes32"},
+        {"indexed": False, "internalType": "string", "name": "storageId", "type": "string"},
+        {"indexed": True, "internalType": "address", "name": "doctorWallet", "type": "address"},
+        {"indexed": False, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
+        {"indexed": False, "internalType": "string", "name": "finalLabel", "type": "string"},
+        {"indexed": False, "internalType": "uint256", "name": "trustScoreBps", "type": "uint256"},
+    ],
+    "name": "MedicalRecordStored",
+    "type": "event",
 }]
 
 
@@ -59,6 +92,18 @@ class BlockchainService:
             "spo2": input_data.get("spo2"),
         }
 
+    @staticmethod
+    def _trust_score(record: dict) -> float:
+        if record.get("trust_score") is not None:
+            return float(record.get("trust_score") or 0)
+        final_probabilities = record.get("fusion", {}).get("final_probabilities", {})
+        values = [
+            float(value)
+            for value in final_probabilities.values()
+            if value is not None
+        ]
+        return max(values) if values else 0.0
+
     def prepare_record(self, record: dict) -> dict:
         encrypted_vitals = encrypt_record(self._vitals_payload(record), self.public_key_path)
         digest = encrypted_data_hash(encrypted_vitals)
@@ -84,7 +129,7 @@ class BlockchainService:
             "timestamp": timestamp,
             "patient_device_id": device_id,
             "final_label": record.get("final_label", "unknown"),
-            "trust_score": record.get("trust_score", 0),
+            "trust_score": self._trust_score(record),
             "transaction_hash": None,
             "stored_on_chain": False,
         }
@@ -97,7 +142,7 @@ class BlockchainService:
             prepared["doctor_wallet"],
             prepared["timestamp"],
             prepared["final_label"],
-            int(float(prepared.get("trust_score", 0)) * 10000),
+            int(round(float(prepared.get("trust_score", 0)) * 10000)),
         )
         stored = {
             **prepared,
@@ -161,5 +206,74 @@ class BlockchainService:
         except Exception:
             return {"stored_on_chain": False, "transaction_hash": f"pending-chain-{int(time.time())}", "record_id": len(self.memory)}
 
+    def _contract_connection(self):
+        if Web3 is None:
+            return None, None
+        rpc_url = os.getenv("WEB3_PROVIDER_URL") or os.getenv("RPC_URL")
+        contract_address = os.getenv("CONTRACT_ADDRESS")
+        if not (rpc_url and contract_address):
+            return None, None
+        web3 = Web3(Web3.HTTPProvider(rpc_url))
+        if not web3.is_connected():
+            return None, None
+        contract = web3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=CONTRACT_ABI)
+        return web3, contract
+
+    def _event_transaction_hashes(self, contract) -> dict[int, str]:
+        tx_hashes: dict[int, str] = {}
+        try:
+            from_block = int(os.getenv("CONTRACT_DEPLOY_BLOCK", "0"))
+            logs = contract.events.MedicalRecordStored().get_logs(fromBlock=from_block, toBlock="latest")
+            for log in logs:
+                tx_hashes[int(log["args"]["id"])] = log["transactionHash"].hex()
+        except Exception:
+            pass
+        return tx_hashes
+
+    @staticmethod
+    def _hex_data_hash(value) -> str:
+        if isinstance(value, str):
+            return value
+        return "0x" + bytes(value).hex()
+
+    def list_on_chain_records(self) -> List[dict]:
+        web3, contract = self._contract_connection()
+        if web3 is None or contract is None:
+            return []
+        count = int(contract.functions.recordCount().call())
+        tx_hashes = self._event_transaction_hashes(contract)
+        records = []
+        for record_id in range(count):
+            raw = contract.functions.getRecord(record_id).call()
+            patient_id, data_hash, storage_id, doctor_wallet, timestamp, final_label, trust_score_bps = raw
+            data_hash = self._hex_data_hash(data_hash)
+            local_match = next((item for item in self.memory if item.get("data_hash") == data_hash), {})
+            records.append({
+                "id": record_id,
+                "ethereumRecordId": record_id,
+                "patient_id": patient_id,
+                "patientId": patient_id,
+                "data_hash": data_hash,
+                "dataHash": data_hash,
+                "storage_id": storage_id,
+                "storageId": storage_id,
+                "doctor_wallet": doctor_wallet,
+                "doctorWallet": doctor_wallet,
+                "doctorWalletAddress": doctor_wallet,
+                "timestamp": int(timestamp),
+                "final_label": final_label,
+                "finalLabel": final_label,
+                "trust_score": int(trust_score_bps) / 10000,
+                "trustScore": int(trust_score_bps) / 10000,
+                "transaction_hash": tx_hashes.get(record_id) or local_match.get("transaction_hash", ""),
+                "transactionHash": tx_hashes.get(record_id) or local_match.get("transaction_hash", ""),
+                "stored_on_chain": True,
+                "encrypted_vitals": local_match.get("encrypted_vitals"),
+            })
+        return records
+
     def list_records(self) -> List[dict]:
-        return list(self.memory)
+        on_chain = self.list_on_chain_records()
+        if on_chain:
+            return sorted(on_chain, key=lambda item: int(item.get("timestamp", 0)), reverse=True)
+        return [item for item in self.memory if item.get("stored_on_chain")]

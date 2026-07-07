@@ -115,6 +115,16 @@ from(bucket: "{self.bucket}")
                     for item in table.records:
                         values = item.values
                         timestamp = values.get("_time")
+                        final_probabilities = {
+                            "normal_vitals": values.get("fusion_normal_vitals"),
+                            "critical_vitals": values.get("fusion_critical_vitals"),
+                            "device_error": values.get("fusion_device_error"),
+                        }
+                        trust_values = [
+                            float(value)
+                            for value in final_probabilities.values()
+                            if value is not None
+                        ]
                         rows.append({
                             "input": {
                                 "timestamp": timestamp.isoformat() if timestamp else "",
@@ -126,14 +136,11 @@ from(bucket: "{self.bucket}")
                                 "respiratory_rate": values.get("respiratory_rate"),
                             },
                             "final_label": values.get("final_label", ""),
+                            "trust_score": max(trust_values) if trust_values else 0,
                             "isolation_forest": {"anomaly_score": values.get("anomaly_score")},
                             "fusion": {
                                 "alpha": values.get("alpha"),
-                                "final_probabilities": {
-                                    "normal_vitals": values.get("fusion_normal_vitals"),
-                                    "critical_vitals": values.get("fusion_critical_vitals"),
-                                    "device_error": values.get("fusion_device_error"),
-                                },
+                                "final_probabilities": final_probabilities,
                             },
                             "xgboost": {"probabilities": {
                                 "normal_vitals": values.get("xgb_normal_vitals"),

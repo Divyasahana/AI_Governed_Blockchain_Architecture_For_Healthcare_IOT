@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict, deque
 from pathlib import Path
-from typing import Deque, Dict
+from typing import Deque, Dict, Iterable
 
 import joblib
 import numpy as np
@@ -169,16 +169,48 @@ class ModelService:
         except Exception as exc:
             raise ModelNotReadyError(f"Adaptive fusion gate prediction failed: {exc}") from exc
 
-    def predict(self, payload: dict) -> dict:
-        vitals = normalize_payload(payload)
-        history = self.history[vitals["device_id"]]
-        row = feature_row(vitals, history)
+    def _normalize_history(self, history_payload: Iterable[dict], current: dict) -> list[dict]:
+        rows = []
+        for item in history_payload:
+            if not isinstance(item, dict):
+                continue
+            merged = {
+                "device_id": current["device_id"],
+                "patient_id": current["patient_id"],
+                **item,
+            }
+            rows.append(normalize_payload(merged))
+        return rows
+
+    def _payload_parts(self, payload) -> tuple[dict, list[dict]]:
+        if isinstance(payload, list):
+            if not payload:
+                raise ValueError("Prediction input list cannot be empty.")
+            current_payload = payload[-1]
+            history_payload = payload[:-1]
+        elif isinstance(payload, dict):
+            history_payload = payload.get("history") or payload.get("readings") or payload.get("sequence") or []
+            current_payload = {key: value for key, value in payload.items() if key not in {"history", "readings", "sequence"}}
+        else:
+            raise ValueError("Prediction input must be a JSON object or a non-empty JSON array.")
+        if not isinstance(current_payload, dict):
+            raise ValueError("Current prediction reading must be a JSON object.")
+        vitals = normalize_payload(current_payload)
+        history = self._normalize_history(history_payload, vitals) if isinstance(history_payload, list) else []
+        return vitals, history
+
+    def predict(self, payload) -> dict:
+        vitals, request_history = self._payload_parts(payload)
+        stored_history = list(self.history[vitals["device_id"]])
+        effective_history = deque((stored_history + request_history)[-120:], maxlen=120)
+        row = feature_row(vitals, effective_history)
         xgb_probs = self._xgb_probs(row)
-        lstm_probs, sequence_available = self._lstm_probs(row, history)
+        lstm_probs, sequence_available = self._lstm_probs(row, effective_history)
         anomaly_score = self._anomaly_score(row)
         alpha = self._fusion_alpha(row, xgb_probs, lstm_probs, anomaly_score, sequence_available)
         fusion = fuse(xgb_probs, lstm_probs, anomaly_score, sequence_available, alpha)
-        history.append(vitals)
+        self.history[vitals["device_id"]].extend(request_history)
+        self.history[vitals["device_id"]].append(vitals)
         trust_score = round(float(fusion["final_probability"]), 4)
         return {
             "input": vitals,

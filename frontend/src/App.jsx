@@ -5,6 +5,7 @@ import {
   fetchDbRecords,
   fetchDbStatus,
   fetchLatest,
+  backfillBlockchainRecords,
   predictVitals,
   storeRecordOnChain,
 } from './api/client.js';
@@ -231,6 +232,8 @@ function DatabaseRecords() {
 function BlockchainRecords() {
   const [records, setRecords] = useState([]);
   const [decrypt, setDecrypt] = useState(false);
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
 
   async function refresh(nextDecrypt = decrypt) {
     const items = await fetchBlockchainRecords(nextDecrypt);
@@ -245,11 +248,27 @@ function BlockchainRecords() {
     await refresh(nextDecrypt);
   }
 
+  async function storeMissingRecords() {
+    setBusy(true);
+    setStatus('Storing missing records on Sepolia...');
+    try {
+      const result = await backfillBlockchainRecords(100);
+      setStatus(`Stored ${result.stored_count} missing records. Skipped ${result.skipped_existing_count}. Failed ${result.failed_count}.`);
+      await refresh(decrypt);
+    } catch (err) {
+      setStatus(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="page">
       <section className="toolbar">
         <button onClick={toggleDecrypt}>{decrypt ? 'Hide Decrypted' : 'Decrypt'}</button>
         <button onClick={() => refresh()}>Refresh</button>
+        <button onClick={storeMissingRecords} disabled={busy}>{busy ? 'Storing...' : 'Store Missing Records'}</button>
+        {status && <span>{status}</span>}
       </section>
       <div className="grid">
         {records.map((r, i) => (
@@ -259,6 +278,7 @@ function BlockchainRecords() {
             <p><b>dataHash:</b> <code>{r.dataHash || r.data_hash || r.record_hash}</code></p>
             <p><b>storageId:</b> <code>{r.storageId || r.storage_id || r.encrypted_data_reference}</code></p>
             <p><b>doctorWalletAddress:</b> <code>{r.doctorWalletAddress || r.doctorWallet || r.doctor_wallet}</code></p>
+            <p><b>transactionHash:</b> <code>{r.transactionHash || r.transaction_hash || r.blockchain_tx_hash}</code></p>
             <p><b>timestamp:</b> <code>{r.timestamp}</code></p>
             <p><b>finalLabel:</b> <code>{r.finalLabel || r.final_label}</code></p>
             <p><b>trustScore:</b> <code>{fmt(r.trustScore ?? r.trust_score)}</code></p>
