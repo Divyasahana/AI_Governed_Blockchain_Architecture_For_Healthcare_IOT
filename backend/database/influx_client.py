@@ -82,6 +82,7 @@ class InfluxStore:
             .field("lstm_normal_vitals", float(record["lstm"]["probabilities"]["normal_vitals"]))
             .field("lstm_critical_vitals", float(record["lstm"]["probabilities"]["critical_vitals"]))
             .field("lstm_device_error", float(record["lstm"]["probabilities"]["device_error"]))
+            .field("lstm_sequence_available", bool(record.get("lstm", {}).get("sequence_available", False)))
             .field("fusion_normal_vitals", float(fusion["final_probabilities"]["normal_vitals"]))
             .field("fusion_critical_vitals", float(fusion["final_probabilities"]["critical_vitals"]))
             .field("fusion_device_error", float(fusion["final_probabilities"]["device_error"]))
@@ -106,6 +107,7 @@ from(bucket: "{self.bucket}")
   |> range(start: 0)
   |> filter(fn: (r) => r._measurement == "medical_vitals")
   |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> group()
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: {int(limit)})
 '''
@@ -151,9 +153,14 @@ from(bucket: "{self.bucket}")
                                 "normal_vitals": values.get("lstm_normal_vitals"),
                                 "critical_vitals": values.get("lstm_critical_vitals"),
                                 "device_error": values.get("lstm_device_error"),
-                            }, "sequence_available": False},
+                            }, "sequence_available": bool(values.get("lstm_sequence_available", False))},
                             "encrypted_vitals": values.get("encrypted_vitals", ""),
                         })
+                rows = sorted(
+                    rows,
+                    key=lambda row: parse_timestamp(row.get("input", {}).get("timestamp", "")),
+                    reverse=True,
+                )
                 self.error = None
                 return rows[:int(limit)]
             except Exception as exc:

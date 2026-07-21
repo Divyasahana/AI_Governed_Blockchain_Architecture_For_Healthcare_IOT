@@ -6,6 +6,15 @@ from typing import Dict
 from .features import LABELS, probs_to_label
 
 
+def report_probability(value: float, digits: int = 4) -> float:
+    rounded = round(float(value), digits)
+    if rounded >= 1.0:
+        return round(1.0 - (10 ** -digits), digits)
+    if rounded <= 0.0:
+        return 0.0
+    return rounded
+
+
 def entropy(probs: Dict[str, float]) -> float:
     values = [max(1e-9, float(probs.get(label, 0))) for label in LABELS]
     return -sum(p * math.log(p) for p in values)
@@ -25,7 +34,7 @@ def fuse(xgb_probs: Dict[str, float], lstm_probs: Dict[str, float], anomaly_scor
     return {
         "alpha": round(alpha, 4),
         "final_label": label,
-        "final_probability": round(confidence, 4),
-        "final_probabilities": {k: round(v, 4) for k, v in final_probs.items()},
+        "final_probability": report_probability(confidence),
+        "final_probabilities": {k: report_probability(v) for k, v in final_probs.items()},
         "warning": None,
     }

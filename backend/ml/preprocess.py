@@ -123,10 +123,10 @@ def main():
     base = add_features(clean(read_psv_files(raw_dir, args.max_files)))
     clinical = label_clinical(base)
     faults = simulate_device_errors(base)
-    combined = balance(pd.concat([clinical, faults], ignore_index=True))
+    combined = pd.concat([clinical, faults], ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
     combined.to_csv(output_dir / "cleaned_vitals.csv", index=False)
     visualize(combined, processed_dir)
-    print(f"Saved {len(combined)} balanced rows to {output_dir / 'cleaned_vitals.csv'}")
+    print(f"Saved {len(combined)} unbalanced rows to {output_dir / 'cleaned_vitals.csv'}")
 
 
 if __name__ == "__main__":

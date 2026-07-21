@@ -18,7 +18,15 @@
     "critical_vitals",
     "device_error"
   ],
-  "rows": 15900,
-  "rows_with_real_lstm_sequence": 1800,
-  "rows_without_lstm_sequence_use_xgboost_fallback": 14100
+  "rows": 150824,
+  "rows_with_real_lstm_sequence": 115308,
+  "rows_without_lstm_sequence_use_xgboost_fallback": 35516,
+  "epochs": 60,
+  "smote": {
+    "enabled": true,
+    "applied_after_split": true,
+    "validation_untouched": true,
+    "fusion_training_rows_before": 120659,
+    "fusion_training_rows_after": 288927
+  }
 }

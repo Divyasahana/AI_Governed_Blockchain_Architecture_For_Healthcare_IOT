@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import threading
+import os
 from datetime import datetime, timezone
 
 import requests
@@ -28,9 +29,10 @@ class SimulatorService:
         return {"running": False}
 
     def _run(self, api_url: str, mode: str, interval: float, device_id: str):
+        timeout = float(os.getenv("SIMULATOR_REQUEST_TIMEOUT", "90"))
         while not self.stop_event.is_set():
             try:
-                requests.post(api_url, json=generate(mode, device_id), timeout=5)
+                requests.post(api_url, json=generate(mode, device_id), timeout=timeout)
             except Exception:
                 pass
             self.stop_event.wait(interval)

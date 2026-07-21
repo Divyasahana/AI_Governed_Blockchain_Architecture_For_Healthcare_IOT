@@ -43,5 +43,32 @@
   ],
   "sequence_length": 12,
   "lstm_torchscript": true,
-  "lstm_validation_accuracy": 0.7138888835906982
+  "lstm_validation_accuracy": 0.9635764461018125,
+  "lstm_training": {
+    "max_epochs": 100,
+    "epochs_ran": 65,
+    "early_stopping_patience": 12,
+    "learning_rate": 0.0005,
+    "hidden_dim": 96,
+    "batch_size": 512,
+    "gradient_clip": 1.0,
+    "optimizer": "AdamW",
+    "weight_decay": 0.0001,
+    "class_weights_enabled": false,
+    "class_weights": {
+      "normal_vitals": 0.10817733407020569,
+      "critical_vitals": 2.377990961074829,
+      "device_error": 0.5138318538665771
+    },
+    "history_file": "lstm_training_history.csv"
+  },
+  "smote": {
+    "enabled": true,
+    "applied_after_split": true,
+    "validation_untouched": true,
+    "xgboost_training_rows_before": 120659,
+    "xgboost_training_rows_after": 288927,
+    "lstm_training_sequences_before": 92246,
+    "lstm_training_sequences_after": 220329
+  }
 }

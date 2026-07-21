@@ -7,6 +7,7 @@ from typing import Deque, Dict, Iterable
 
 import joblib
 import numpy as np
+import pandas as pd
 
 from .features import LABELS, SEQUENCE_LENGTH, feature_row, normalize_payload, sequence_matrix
 from .fusion import entropy, fuse
@@ -20,6 +21,15 @@ except Exception:
 
 class ModelNotReadyError(RuntimeError):
     pass
+
+
+def report_probability(value: float, digits: int = 4) -> float:
+    rounded = round(float(value), digits)
+    if rounded >= 1.0:
+        return round(1.0 - (10 ** -digits), digits)
+    if rounded <= 0.0:
+        return 0.0
+    return rounded
 
 
 class ModelService:
@@ -84,13 +94,20 @@ class ModelService:
         columns = self.feature_columns
         return np.array([[float(row.get(col, 0.0)) for col in columns]], dtype=float)
 
+    def _model_input(self, row: dict, transformer):
+        columns = self.feature_columns
+        values = [[float(row.get(col, 0.0)) for col in columns]]
+        if transformer is not None and hasattr(transformer, "feature_names_in_"):
+            return pd.DataFrame(values, columns=columns)
+        return np.array(values, dtype=float)
+
     def _xgb_probs(self, row: dict) -> dict:
         if self.xgb is None:
             raise ModelNotReadyError("XGBoost artifact is missing. Run backend.ml.train_models first.")
         if self.feature_scaler is None:
             raise ModelNotReadyError("feature_scaler.pkl is missing. Run backend.ml.train_models first.")
         try:
-            x = self._vector(row)
+            x = self._model_input(row, self.feature_scaler)
             x = self.feature_scaler.transform(x)
             probs = self.xgb.predict_proba(x)[0]
             classes = getattr(self.xgb, "classes_", LABELS)
@@ -139,7 +156,7 @@ class ModelService:
         if self.scaler_if is None:
             raise ModelNotReadyError("iforest_scaler.pkl is missing. Run backend.ml.train_models first.")
         try:
-            x = self._vector(row)
+            x = self._model_input(row, self.scaler_if)
             x = self.scaler_if.transform(x)
             raw = float(self.iforest.decision_function(x)[0])
             return round(max(0.0, min(1.0, 0.5 - raw)), 4)
@@ -216,10 +233,10 @@ class ModelService:
             "input": vitals,
             "features": row,
             "isolation_forest": {"anomaly_score": anomaly_score},
-            "xgboost": {"probabilities": {k: round(v, 4) for k, v in xgb_probs.items()}},
-            "lstm": {"probabilities": {k: round(v, 4) for k, v in lstm_probs.items()}, "sequence_available": sequence_available},
+            "xgboost": {"probabilities": {k: report_probability(v) for k, v in xgb_probs.items()}},
+            "lstm": {"probabilities": {k: report_probability(v) for k, v in lstm_probs.items()}, "sequence_available": sequence_available},
             "fusion": fusion,
             "final_label": fusion["final_label"],
-            "confidence": fusion["final_probability"],
+            "confidence": report_probability(fusion["final_probability"]),
             "trust_score": trust_score,
         }

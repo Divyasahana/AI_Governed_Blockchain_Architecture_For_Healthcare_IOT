@@ -215,7 +215,11 @@ function DatabaseRecords() {
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <main className="page">
       <section className="toolbar">
@@ -233,11 +237,17 @@ function BlockchainRecords() {
   const [records, setRecords] = useState([]);
   const [decrypt, setDecrypt] = useState(false);
   const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function refresh(nextDecrypt = decrypt) {
-    const items = await fetchBlockchainRecords(nextDecrypt);
-    setRecords(sortByRecentUnixTime(items));
+    try {
+      const items = await fetchBlockchainRecords(nextDecrypt);
+      setRecords(sortByRecentUnixTime(items));
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   useEffect(() => { refresh(false); }, []);
@@ -270,10 +280,13 @@ function BlockchainRecords() {
         <button onClick={storeMissingRecords} disabled={busy}>{busy ? 'Storing...' : 'Store Missing Records'}</button>
         {status && <span>{status}</span>}
       </section>
+      {error && <p className="error">{error}</p>}
+      {!error && records.length === 0 && <p className="empty">No blockchain records found yet.</p>}
       <div className="grid">
         {records.map((r, i) => (
           <article className="record" key={`${r.dataHash || r.data_hash || r.record_hash}-${i}`}>
             <p><b>ethereumRecordId:</b> <code>{r.ethereumRecordId ?? r.id ?? i}</code></p>
+            <p><b>storedOnChain:</b> <code>{String(r.storedOnChain ?? r.stored_on_chain ?? '')}</code></p>
             <p><b>patientId:</b> <code>{r.patientId || r.patient_id}</code></p>
             <p><b>dataHash:</b> <code>{r.dataHash || r.data_hash || r.record_hash}</code></p>
             <p><b>storageId:</b> <code>{r.storageId || r.storage_id || r.encrypted_data_reference}</code></p>
@@ -314,6 +327,7 @@ function RecordsTable({ records }) {
           <th>LSTM-N</th>
           <th>LSTM-C</th>
           <th>LSTM-D</th>
+          <th>LSTM Seq</th>
           <th>Alpha</th>
           <th>Final-N</th>
           <th>Final-C</th>
@@ -332,16 +346,17 @@ function RecordsTable({ records }) {
             <td className="num">{fmt(r.input?.respiratory_rate)}</td>
             <td className="num">{fmt(r.input?.spo2)}</td>
             <td className="num">{fmt(r.isolation_forest?.anomaly_score)}</td>
-            <td className="num">{fmt(r.xgboost?.probabilities?.normal_vitals)}</td>
-            <td className="num">{fmt(r.xgboost?.probabilities?.critical_vitals)}</td>
-            <td className="num">{fmt(r.xgboost?.probabilities?.device_error)}</td>
-            <td className="num">{fmt(r.lstm?.probabilities?.normal_vitals)}</td>
-            <td className="num">{fmt(r.lstm?.probabilities?.critical_vitals)}</td>
-            <td className="num">{fmt(r.lstm?.probabilities?.device_error)}</td>
+            <td className="num">{fmtProb(r.xgboost?.probabilities?.normal_vitals)}</td>
+            <td className="num">{fmtProb(r.xgboost?.probabilities?.critical_vitals)}</td>
+            <td className="num">{fmtProb(r.xgboost?.probabilities?.device_error)}</td>
+            <td className="num">{fmtProb(r.lstm?.probabilities?.normal_vitals)}</td>
+            <td className="num">{fmtProb(r.lstm?.probabilities?.critical_vitals)}</td>
+            <td className="num">{fmtProb(r.lstm?.probabilities?.device_error)}</td>
+            <td>{r.lstm?.sequence_available ? 'yes' : 'fallback'}</td>
             <td className="num">{fmt(r.fusion?.alpha)}</td>
-            <td className="num">{fmt(r.fusion?.final_probabilities?.normal_vitals)}</td>
-            <td className="num">{fmt(r.fusion?.final_probabilities?.critical_vitals)}</td>
-            <td className="num">{fmt(r.fusion?.final_probabilities?.device_error)}</td>
+            <td className="num">{fmtProb(r.fusion?.final_probabilities?.normal_vitals)}</td>
+            <td className="num">{fmtProb(r.fusion?.final_probabilities?.critical_vitals)}</td>
+            <td className="num">{fmtProb(r.fusion?.final_probabilities?.device_error)}</td>
             <td>{r.final_label}</td>
             <td><code title={r.encrypted_vitals || ''}>{shortHash(r.encrypted_vitals || '')}</code></td>
           </tr>
@@ -355,6 +370,20 @@ function fmt(value) {
   if (value === null || value === undefined || value === '') return '';
   const number = Number(value);
   return Number.isFinite(number) ? number.toFixed(3).replace(/\.?0+$/, '') : value;
+}
+
+function fmtProb(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  const displayed = number >= 1 ? 0.9999 : number;
+  return displayed.toFixed(4);
+}
+
+function fmtPercent(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(2)}%` : value;
 }
 
 function formatTime(value) {
@@ -432,7 +461,7 @@ function Probability({ title, values = {} }) {
     <div className="prob">
       <h3>{title}</h3>
       {Object.entries(values).map(([label, value]) => (
-        <label key={label}><span>{label}</span><progress max="1" value={value}></progress><b>{Math.round(value * 100)}%</b></label>
+        <label key={label}><span>{label}</span><progress max="1" value={value}></progress><b>{fmtProb(value)} ({fmtPercent(value)})</b></label>
       ))}
     </div>
   );

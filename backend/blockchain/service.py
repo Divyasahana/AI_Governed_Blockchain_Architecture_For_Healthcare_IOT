@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import json
 import time
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Deque, List
 
 from .crypto import encrypt_record, encrypted_data_hash, generate_keypair
@@ -80,8 +82,20 @@ class BlockchainService:
     def __init__(self):
         self.public_key_path = os.getenv("PUBLIC_KEY_PATH", "keys/public.pem")
         self.private_key_path = os.getenv("PRIVATE_KEY_PATH", "keys/private.pem")
+        self.project_root = Path(__file__).resolve().parents[2]
         generate_keypair(self.private_key_path, self.public_key_path)
         self.memory: Deque[dict] = deque(maxlen=500)
+
+    def _contract_address(self) -> str | None:
+        configured = os.getenv("CONTRACT_ADDRESS")
+        if configured:
+            return configured
+        deployment_file = self.project_root / "deployment.json"
+        try:
+            deployment = json.loads(deployment_file.read_text(encoding="utf-8"))
+            return deployment.get("address")
+        except Exception:
+            return None
 
     def _vitals_payload(self, record: dict) -> dict:
         input_data = record.get("input", {})
@@ -172,7 +186,7 @@ class BlockchainService:
         if Web3 is None:
             return {"stored_on_chain": False, "transaction_hash": f"local-{int(time.time())}", "record_id": len(self.memory)}
         rpc_url = os.getenv("WEB3_PROVIDER_URL") or os.getenv("RPC_URL")
-        contract_address = os.getenv("CONTRACT_ADDRESS")
+        contract_address = self._contract_address()
         private_key = os.getenv("ETH_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
         if not (rpc_url and contract_address and private_key):
             return {"stored_on_chain": False, "transaction_hash": f"local-{int(time.time())}", "record_id": len(self.memory)}
@@ -210,7 +224,7 @@ class BlockchainService:
         if Web3 is None:
             return None, None
         rpc_url = os.getenv("WEB3_PROVIDER_URL") or os.getenv("RPC_URL")
-        contract_address = os.getenv("CONTRACT_ADDRESS")
+        contract_address = self._contract_address()
         if not (rpc_url and contract_address):
             return None, None
         web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -276,4 +290,4 @@ class BlockchainService:
         on_chain = self.list_on_chain_records()
         if on_chain:
             return sorted(on_chain, key=lambda item: int(item.get("timestamp", 0)), reverse=True)
-        return [item for item in self.memory if item.get("stored_on_chain")]
+        return list(self.memory)
